@@ -151,12 +151,9 @@ class HttpWriterSpec extends AnyWordSpec with Matchers with MockitoSugar {
       writer.batches must be(Nil)
 
       verify(dispatcher).pauseTime
-      verify(ctx).pause(tp, tp, tp)
       verify(ctx).timeout(100L)
       verify(formatter).toOutputFormat(records)
       verify(dispatcher).send(Map("content-type" -> "application/json"), json, true)
-      Thread.sleep(1000L)
-      verify(ctx).resume(tp, tp, tp)
     }
   }
 

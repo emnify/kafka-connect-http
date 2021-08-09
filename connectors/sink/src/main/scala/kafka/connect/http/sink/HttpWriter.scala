@@ -17,21 +17,17 @@
 package kafka.connect.http.sink
 
 import java.time.Instant
-import java.util.Optional
 
 import kafka.connect.http.sink.authenticator.Authenticator
 import kafka.connect.http.sink.dispatcher.Dispatcher
 import kafka.connect.http.sink.errors.{MaxAmountOfRetriesReached, SinkError}
 import kafka.connect.http.sink.formatter.Formatter
-import org.apache.kafka.clients.consumer.OffsetAndMetadata
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.connect.errors.RetriableException
 import org.apache.kafka.connect.sink.{SinkRecord, SinkTaskContext}
 import org.slf4j.MDC
 import sttp.client3.{SttpBackendOptions, TryHttpURLConnectionBackend}
 
-import scala.collection.mutable
-import scala.concurrent.{ExecutionContext, Future}
 import scala.concurrent.duration.{Duration, DurationLong}
 
 class HttpWriter(
@@ -40,35 +36,39 @@ class HttpWriter(
     private val formatter: Formatter,
     private val authenticator: Option[Authenticator],
     private val context: Option[SinkTaskContext]
-)(implicit ec: ExecutionContext)
-    extends Logging {
+) extends Logging {
 
-  var batches: List[SinkRecord]                                     = List()
-  val lastCommitted: mutable.Map[TopicPartition, OffsetAndMetadata] = mutable.Map.empty
-  var pausedUntil                                                   = Instant.MIN
+  var batches: List[SinkRecord]    = List()
+  var verificationPending: Boolean = true
+  var pausedUntil                  = Instant.MIN
 
-  def put(records: List[SinkRecord]): Unit =
+  def put(records: List[SinkRecord]): Unit = {
+    logger.debug(s"Paused until = ${pausedUntil} now=${Instant.now()}")
     if (pausedUntil.isBefore(Instant.now())) {
       batches = batches ++ records
       // send only one batch in batches
-      if (batches.size >= config.batchSize || lastCommitted.isEmpty) {
+      if (batches.size >= config.batchSize || verificationPending) {
         val (toSend, remaining) = batches.splitAt(config.batchSize)
-        if (sendBatch(toSend, lastCommitted.isEmpty)) {
+        if (sendBatch(toSend, verificationPending)) {
           batches = remaining
+          verificationPending = false
         } else {
+          batches = List()
           throw WriterPaused(s"Connector paused due to error")
         }
       }
     } else {
       throw WriterPaused(s"Writer paused until ${pausedUntil}")
     }
+  }
 
-  def flush(): Map[TopicPartition, OffsetAndMetadata] =
+  def flush(): Unit =
     if (pausedUntil.isBefore(Instant.now())) {
-      batches.grouped(config.batchSize).foldLeft(true)((prev, b) => prev && sendBatch(b, lastCommitted.isEmpty))
+      batches.grouped(config.batchSize).foldLeft(true)((prev, b) => prev && sendBatch(b, verificationPending))
       batches = List()
-      lastCommitted.toMap
+      verificationPending = false
     } else {
+      batches = List()
       throw WriterPaused(s"Writer paused until ${pausedUntil}")
     }
 
@@ -79,10 +79,9 @@ class HttpWriter(
       authenticator.fold(config.httpHeaders)(a => config.httpHeaders + (config.authHeaderName -> a.authHeader()))
     dispatcher.send(headers, body, failFast) match {
       case None =>
-        records.foreach(r => updateLastCommitted(toTopicPartition(r), r.kafkaOffset()))
-        // send failed => we are not going to commit and instead of that we'll be pausing consumption
         true
       case Some(err) =>
+        // send failed => we are not going to commit and instead of that we'll be pausing consumption
         pauseFor(err, records.map(toTopicPartition), dispatcher.pauseTime)
         false
     }
@@ -101,36 +100,13 @@ class HttpWriter(
       case e: SinkError =>
         logger.info(s"Pausing partitions ${tp.mkString(",")} for ${duration} due to sink error", e)
         pausedUntil = Instant.now().plusMillis(duration.toMillis)
-        unpause(tp, duration).onComplete(_ => logger.info(s"Partitions un-paused => ${tp.mkString(",")}"))
         context.foreach { ctx =>
           // will only poll this often
           ctx.timeout(duration.toMillis)
           // consumption should be paused until we unpause
-          ctx.pause(tp: _*)
           logger.debug(s"Paused partitions ${tp.mkString(",")} for ${duration} due to sink error", e)
         }
     }
-
-  private def unpause(tp: List[TopicPartition], duration: Duration) = Future {
-    pausedUntil = Instant.MIN
-    try {
-      Thread.sleep(duration.toMillis)
-      logger.debug(s"Resuming partitions ${tp.mkString(",")}")
-    } finally {
-      context.foreach(_.resume(tp: _*))
-      logger.debug(s"Partitions resumed ${tp.mkString(",")}")
-    }
-  }
-
-  private def updateLastCommitted(tp: TopicPartition, offset: Long) = {
-    val of = lastCommitted
-      .get(tp)
-      .filter(p => p.offset() < offset)
-      .getOrElse(
-        new OffsetAndMetadata(offset, Optional.empty(), null)
-      )
-    lastCommitted.put(tp, of)
-  }
 
   private def toTopicPartition(r: SinkRecord) = new TopicPartition(r.topic(), r.kafkaPartition())
 
@@ -138,7 +114,7 @@ class HttpWriter(
 
 object HttpWriter {
 
-  def make(context: Option[SinkTaskContext])(config: HttpSinkConfig)(implicit ec: ExecutionContext): HttpWriter = {
+  def make(context: Option[SinkTaskContext])(config: HttpSinkConfig): HttpWriter = {
     val backend    = TryHttpURLConnectionBackend(options = SttpBackendOptions(connectionTimeout = config.connectTimeout.milliseconds, None))
     val dispatcher = Dispatcher.sttp(config, backend)
     val formatter = config.formatter match {

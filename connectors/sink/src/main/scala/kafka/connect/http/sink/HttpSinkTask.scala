@@ -16,19 +16,17 @@
 
 package kafka.connect.http.sink
 
-import java.util
-import java.util.concurrent.Executors
-
 import org.apache.kafka.clients.consumer.OffsetAndMetadata
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.connect.sink.{SinkRecord, SinkTask}
+import java.util
 
-import scala.concurrent.ExecutionContext
+import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 
 class HttpSinkTask extends SinkTask with Logging {
-  var writer: Option[HttpWriter] = None
-  implicit val ec                = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
+  var writer: Option[HttpWriter]                = None
+  var lastOffsets: mutable.Map[TopicPart, Long] = mutable.Map.empty
 
   override def start(props: util.Map[String, String]): Unit = {
     logger.info(s"starting http sink connector task: $props")
@@ -36,11 +34,22 @@ class HttpSinkTask extends SinkTask with Logging {
   }
 
   override def put(records: util.Collection[SinkRecord]): Unit = {
-    logger.trace(s"received ${records.size()} records")
-    val recs = records.asScala.filter(r => r != null && r.value() != null).toList
+    logger.debug(s"received ${records.size()} records with offsets = ${records.asScala
+      .map(_.kafkaOffset())
+      .mkString(",")} and partitions=${records.asScala.map(_.kafkaPartition()).mkString(",")}")
+    val recs = records.asScala.filter(r => r != null && r.value() != null && !alreadySent(r)).toList
     if (recs.nonEmpty) {
       writer.foreach(_.put(recs))
     }
+  }
+
+  /*
+   Guard to filter out records already sent.
+   Kafka connect sometimes calls put for records that should have been already committed
+   */
+  private def alreadySent(r: SinkRecord) = {
+    val lastOffset = lastOffsets.get(TopicPart(r.topic(), r.kafkaPartition()))
+    lastOffset.fold(false)(offset => offset >= r.kafkaOffset())
   }
 
   override def stop(): Unit =
@@ -50,11 +59,18 @@ class HttpSinkTask extends SinkTask with Logging {
     getClass.getPackage.getImplementationVersion
 
   // commit only if everything has been flushed correctly
-  override def preCommit(currentOffsets: util.Map[TopicPartition, OffsetAndMetadata]): util.Map[TopicPartition, OffsetAndMetadata] =
-    writer.map(w => w.flush().asJava).getOrElse(new util.HashMap[TopicPartition, OffsetAndMetadata]())
+  override def preCommit(currentOffsets: util.Map[TopicPartition, OffsetAndMetadata]): util.Map[TopicPartition, OffsetAndMetadata] = {
+    logger.debug(s"Pre-commit called with = ${currentOffsets.asScala.mkString(",")}")
+    writer.foreach(_.flush())
+    lastOffsets = currentOffsets.asScala.map(e => TopicPart(e._1.topic(), e._1.partition()) -> e._2.offset())
+    currentOffsets
+  }
 
   override def flush(currentOffsets: util.Map[TopicPartition, OffsetAndMetadata]): Unit = {
+    logger.trace(s"Flush called with = ${currentOffsets.asScala.mkString(",")}")
     val count = preCommit(currentOffsets)
     logger.debug(s"Flushed ${count.size()} records.")
   }
 }
+
+case class TopicPart(topic: String, partition: Int)
