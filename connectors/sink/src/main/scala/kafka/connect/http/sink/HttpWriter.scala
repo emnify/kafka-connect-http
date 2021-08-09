@@ -56,7 +56,6 @@ class HttpWriter(
         if (sendBatch(toSend, lastCommitted.isEmpty)) {
           batches = remaining
         } else {
-          batches = List.empty
           throw WriterPaused(s"Connector paused due to error")
         }
       }
