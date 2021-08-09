@@ -63,11 +63,14 @@ class HttpWriter(
       throw WriterPaused(s"Writer paused until ${pausedUntil}")
     }
 
-  def flush(): Map[TopicPartition, OffsetAndMetadata] = {
-    batches.grouped(config.batchSize).foldLeft(true)((prev, b) => prev && sendBatch(b, lastCommitted.isEmpty))
-    batches = List()
-    lastCommitted.toMap
-  }
+  def flush(): Map[TopicPartition, OffsetAndMetadata] =
+    if (pausedUntil.isBefore(Instant.now())) {
+      batches.grouped(config.batchSize).foldLeft(true)((prev, b) => prev && sendBatch(b, lastCommitted.isEmpty))
+      batches = List()
+      lastCommitted.toMap
+    } else {
+      throw WriterPaused(s"Writer paused until ${pausedUntil}")
+    }
 
   private def sendBatch(records: List[SinkRecord], failFast: Boolean): Boolean = {
     MDC.put("topics", records.map(_.topic()).mkString(","))
