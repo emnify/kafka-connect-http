@@ -37,7 +37,7 @@ class HttpSinkTask extends SinkTask with Logging {
     logger.debug(s"received ${records.size()} records with offsets = ${records.asScala
       .map(_.kafkaOffset())
       .mkString(",")} and partitions=${records.asScala.map(_.kafkaPartition()).mkString(",")}")
-    val recs = records.asScala.filter(r => r != null && r.value() != null && !alreadySent(r)).toList
+    val recs = records.asScala.filter(r => r != null && r.value() != null && shouldSend(r)).toList
     if (recs.nonEmpty) {
       writer.foreach(_.put(recs))
     }
@@ -46,10 +46,12 @@ class HttpSinkTask extends SinkTask with Logging {
   /*
    Guard to filter out records already sent.
    Kafka connect sometimes calls put for records that should have been already committed
+   Committed offset is the offset for the next record
    */
-  private def alreadySent(r: SinkRecord) = {
+  private def shouldSend(r: SinkRecord) = {
+    logger.info(s"Should send offset=${r.kafkaOffset()} when lastOffsets are = ${lastOffsets.mkString(",")}")
     val lastOffset = lastOffsets.get(TopicPart(r.topic(), r.kafkaPartition()))
-    lastOffset.fold(false)(offset => offset >= r.kafkaOffset())
+    lastOffset.fold(true)(offset => offset - 1 < r.kafkaOffset())
   }
 
   override def stop(): Unit =
