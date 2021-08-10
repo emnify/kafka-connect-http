@@ -16,19 +16,15 @@
 
 package kafka.connect.http.sink
 
-import java.util
-import java.util.concurrent.Executors
-
 import org.apache.kafka.clients.consumer.OffsetAndMetadata
 import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.connect.sink.{SinkRecord, SinkTask}
+import java.util
 
-import scala.concurrent.ExecutionContext
 import scala.jdk.CollectionConverters._
 
 class HttpSinkTask extends SinkTask with Logging {
   var writer: Option[HttpWriter] = None
-  implicit val ec                = ExecutionContext.fromExecutor(Executors.newCachedThreadPool())
 
   override def start(props: util.Map[String, String]): Unit = {
     logger.info(s"starting http sink connector task: $props")
@@ -36,7 +32,9 @@ class HttpSinkTask extends SinkTask with Logging {
   }
 
   override def put(records: util.Collection[SinkRecord]): Unit = {
-    logger.trace(s"received ${records.size()} records")
+    logger.debug(s"received ${records.size()} records with offsets = ${records.asScala
+      .map(_.kafkaOffset())
+      .mkString(",")} and partitions=${records.asScala.map(_.kafkaPartition()).mkString(",")}")
     val recs = records.asScala.filter(r => r != null && r.value() != null).toList
     if (recs.nonEmpty) {
       writer.foreach(_.put(recs))
@@ -50,10 +48,14 @@ class HttpSinkTask extends SinkTask with Logging {
     getClass.getPackage.getImplementationVersion
 
   // commit only if everything has been flushed correctly
-  override def preCommit(currentOffsets: util.Map[TopicPartition, OffsetAndMetadata]): util.Map[TopicPartition, OffsetAndMetadata] =
-    writer.map(w => w.flush().asJava).getOrElse(new util.HashMap[TopicPartition, OffsetAndMetadata]())
+  override def preCommit(currentOffsets: util.Map[TopicPartition, OffsetAndMetadata]): util.Map[TopicPartition, OffsetAndMetadata] = {
+    logger.debug(s"Pre-commit called with = ${currentOffsets.asScala.mkString(",")}")
+    writer.foreach(_.flush())
+    currentOffsets
+  }
 
   override def flush(currentOffsets: util.Map[TopicPartition, OffsetAndMetadata]): Unit = {
+    logger.trace(s"Flush called with = ${currentOffsets.asScala.mkString(",")}")
     val count = preCommit(currentOffsets)
     logger.debug(s"Flushed ${count.size()} records.")
   }
