@@ -79,7 +79,7 @@ class HttpWriter(
    Kafka connect sometimes calls put for records that should have been already committed.
    */
   private def shouldSend(r: SinkRecord) = {
-    logger.info(s"Should send offset=${r.kafkaOffset()} when lastOffsets are = ${lastOffsets.mkString(",")}")
+    logger.trace(s"Should send offset=${r.kafkaOffset()} when lastOffsets are = ${lastOffsets.mkString(",")}")
     val lastOffset = lastOffsets.get(TopicPart(r.topic(), r.kafkaPartition()))
     lastOffset.fold(true)(offset => offset < r.kafkaOffset())
   }
