@@ -26,11 +26,10 @@ import org.mockito.scalatest.MockitoSugar
 import org.scalatest.matchers.must.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
-import scala.concurrent.duration.DurationInt
+import scala.concurrent.duration.{DurationInt}
 
 class HttpWriterSpec extends AnyWordSpec with Matchers with MockitoSugar {
 
-  implicit val ec = scala.concurrent.ExecutionContext.global
   val records = List(
     new SinkRecord("topic", 0, null, null, null, null, 0),
     new SinkRecord("topic", 0, null, null, null, null, 0),
@@ -60,7 +59,7 @@ class HttpWriterSpec extends AnyWordSpec with Matchers with MockitoSugar {
         true
       )
       writer.put(records)
-      writer.batches must contain theSameElementsAs records
+      writer.batches must contain theSameElementsAs List()
     }
 
     "send records when batch is full until it is empty" in {
