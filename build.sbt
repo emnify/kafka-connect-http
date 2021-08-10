@@ -66,10 +66,3 @@ lazy val sink = (project in file("connectors/sink"))
     addArtifact(artifact in (Compile, assembly), assembly)
   )
   .enablePlugins(AutomateHeaderPlugin)
-
-lazy val noPublish = Seq(
-  publish := {},
-  publishLocal := {},
-  publishArtifact := false,
-  publish / skip := true
-)
