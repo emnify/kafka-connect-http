@@ -21,12 +21,10 @@ import org.apache.kafka.common.TopicPartition
 import org.apache.kafka.connect.sink.{SinkRecord, SinkTask}
 import java.util
 
-import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 
 class HttpSinkTask extends SinkTask with Logging {
-  var writer: Option[HttpWriter]                = None
-  var lastOffsets: mutable.Map[TopicPart, Long] = mutable.Map.empty
+  var writer: Option[HttpWriter] = None
 
   override def start(props: util.Map[String, String]): Unit = {
     logger.info(s"starting http sink connector task: $props")
@@ -37,21 +35,10 @@ class HttpSinkTask extends SinkTask with Logging {
     logger.debug(s"received ${records.size()} records with offsets = ${records.asScala
       .map(_.kafkaOffset())
       .mkString(",")} and partitions=${records.asScala.map(_.kafkaPartition()).mkString(",")}")
-    val recs = records.asScala.filter(r => r != null && r.value() != null && shouldSend(r)).toList
+    val recs = records.asScala.filter(r => r != null && r.value() != null).toList
     if (recs.nonEmpty) {
       writer.foreach(_.put(recs))
     }
-  }
-
-  /*
-   Guard to filter out records already sent.
-   Kafka connect sometimes calls put for records that should have been already committed
-   Committed offset is the offset for the next record
-   */
-  private def shouldSend(r: SinkRecord) = {
-    logger.info(s"Should send offset=${r.kafkaOffset()} when lastOffsets are = ${lastOffsets.mkString(",")}")
-    val lastOffset = lastOffsets.get(TopicPart(r.topic(), r.kafkaPartition()))
-    lastOffset.fold(true)(offset => offset - 1 < r.kafkaOffset())
   }
 
   override def stop(): Unit =
@@ -64,7 +51,6 @@ class HttpSinkTask extends SinkTask with Logging {
   override def preCommit(currentOffsets: util.Map[TopicPartition, OffsetAndMetadata]): util.Map[TopicPartition, OffsetAndMetadata] = {
     logger.debug(s"Pre-commit called with = ${currentOffsets.asScala.mkString(",")}")
     writer.foreach(_.flush())
-    lastOffsets = currentOffsets.asScala.map(e => TopicPart(e._1.topic(), e._1.partition()) -> e._2.offset())
     currentOffsets
   }
 
@@ -74,5 +60,3 @@ class HttpSinkTask extends SinkTask with Logging {
     logger.debug(s"Flushed ${count.size()} records.")
   }
 }
-
-case class TopicPart(topic: String, partition: Int)

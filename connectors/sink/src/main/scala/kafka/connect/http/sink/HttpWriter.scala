@@ -28,6 +28,7 @@ import org.apache.kafka.connect.sink.{SinkRecord, SinkTaskContext}
 import org.slf4j.MDC
 import sttp.client3.{SttpBackendOptions, TryHttpURLConnectionBackend}
 
+import scala.collection.mutable
 import scala.concurrent.duration.{Duration, DurationLong}
 
 class HttpWriter(
@@ -38,14 +39,15 @@ class HttpWriter(
     private val context: Option[SinkTaskContext]
 ) extends Logging {
 
-  var batches: List[SinkRecord]    = List()
-  var verificationPending: Boolean = true
-  var pausedUntil                  = Instant.MIN
+  var batches: List[SinkRecord]                 = List()
+  var verificationPending: Boolean              = true
+  var pausedUntil                               = Instant.MIN
+  var lastOffsets: mutable.Map[TopicPart, Long] = mutable.Map.empty
 
   def put(records: List[SinkRecord]): Unit = {
     logger.debug(s"Paused until = ${pausedUntil} now=${Instant.now()}")
     if (pausedUntil.isBefore(Instant.now())) {
-      batches = batches ++ records
+      batches = (batches ++ records).filter(r => shouldSend(r))
       // send only one batch in batches
       if (batches.size >= config.batchSize || verificationPending) {
         val (toSend, remaining) = batches.splitAt(config.batchSize)
@@ -72,6 +74,16 @@ class HttpWriter(
       throw WriterPaused(s"Writer paused until ${pausedUntil}")
     }
 
+  /*
+   Guard to filter out records already sent.
+   Kafka connect sometimes calls put for records that should have been already committed.
+   */
+  private def shouldSend(r: SinkRecord) = {
+    logger.info(s"Should send offset=${r.kafkaOffset()} when lastOffsets are = ${lastOffsets.mkString(",")}")
+    val lastOffset = lastOffsets.get(TopicPart(r.topic(), r.kafkaPartition()))
+    lastOffset.fold(true)(offset => offset < r.kafkaOffset())
+  }
+
   private def sendBatch(records: List[SinkRecord], failFast: Boolean): Boolean = {
     MDC.put("topics", records.map(_.topic()).mkString(","))
     val body = formatter.toOutputFormat(records)
@@ -79,6 +91,7 @@ class HttpWriter(
       authenticator.fold(config.httpHeaders)(a => config.httpHeaders + (config.authHeaderName -> a.authHeader()))
     dispatcher.send(headers, body, failFast) match {
       case None =>
+        records.foreach(r => lastOffsets.put(TopicPart(r.topic(), r.kafkaPartition()), r.kafkaOffset()))
         true
       case Some(err) =>
         // send failed => we are not going to commit and instead of that we'll be pausing consumption
@@ -130,3 +143,5 @@ object HttpWriter {
 }
 
 case class WriterPaused(reason: String) extends RetriableException(reason)
+
+case class TopicPart(topic: String, partition: Int)
