@@ -49,7 +49,7 @@ class HttpWriter(
     if (pausedUntil.isBefore(Instant.now())) {
       batches = (batches ++ records).filter(r => shouldSend(r))
       // send only one batch in batches
-      if (batches.size >= config.batchSize || verificationPending) {
+      if (batches.size >= config.batchSize || (verificationPending && batches.size > 0)) {
         val (toSend, remaining) = batches.splitAt(config.batchSize)
         if (sendBatch(toSend, verificationPending)) {
           batches = remaining
