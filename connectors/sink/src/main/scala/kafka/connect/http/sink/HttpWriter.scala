@@ -67,8 +67,10 @@ class HttpWriter(
   def flush(): Unit =
     if (pausedUntil.isBefore(Instant.now())) {
       batches.grouped(config.batchSize).foldLeft(true)((prev, b) => prev && sendBatch(b, verificationPending))
+      if (batches.size > 0) {
+        verificationPending = false
+      }
       batches = List()
-      verificationPending = false
     } else {
       batches = List()
       throw WriterPaused(s"Writer paused until ${pausedUntil}")
