@@ -40,7 +40,6 @@ class HttpWriter(
 ) extends Logging {
 
   var batches: List[SinkRecord]                 = List()
-  var verificationPending: Boolean              = true
   var pausedUntil                               = Instant.MIN
   var lastOffsets: mutable.Map[TopicPart, Long] = mutable.Map.empty
 
@@ -49,11 +48,10 @@ class HttpWriter(
     if (pausedUntil.isBefore(Instant.now())) {
       batches = (batches ++ records).filter(r => shouldSend(r))
       // send only one batch in batches
-      if (batches.size >= config.batchSize || verificationPending) {
+      if (batches.size >= config.batchSize || lastOffsets.isEmpty) {
         val (toSend, remaining) = batches.splitAt(config.batchSize)
-        if (sendBatch(toSend, verificationPending)) {
+        if (sendBatch(toSend, lastOffsets.isEmpty)) {
           batches = remaining
-          verificationPending = false
         } else {
           batches = List()
           throw WriterPaused(s"Connector paused due to error")
@@ -66,9 +64,8 @@ class HttpWriter(
 
   def flush(): Unit =
     if (pausedUntil.isBefore(Instant.now())) {
-      batches.grouped(config.batchSize).foldLeft(true)((prev, b) => prev && sendBatch(b, verificationPending))
+      batches.grouped(config.batchSize).foldLeft(true)((prev, b) => prev && sendBatch(b, lastOffsets.isEmpty))
       batches = List()
-      verificationPending = false
     } else {
       batches = List()
       throw WriterPaused(s"Writer paused until ${pausedUntil}")
