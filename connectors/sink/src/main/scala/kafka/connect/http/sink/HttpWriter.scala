@@ -82,7 +82,7 @@ class HttpWriter(
   }
 
   private def sendBatch(records: List[SinkRecord], failFast: Boolean): Boolean = {
-    MDC.put("topics", records.map(_.topic()).mkString(","))
+    MDC.put("topics", records.map(_.topic()).distinct.mkString(","))
     val body = formatter.toOutputFormat(records)
     val headers =
       authenticator.fold(config.httpHeaders)(a => config.httpHeaders + (config.authHeaderName -> a.authHeader()))
@@ -92,7 +92,7 @@ class HttpWriter(
         true
       case Some(err) =>
         // send failed => we are not going to commit and instead of that we'll be pausing consumption
-        pauseFor(err, records.map(toTopicPartition), dispatcher.pauseTime)
+        pauseFor(err, records.map(toTopicPartition).distinct, dispatcher.pauseTime)
         false
     }
   }
