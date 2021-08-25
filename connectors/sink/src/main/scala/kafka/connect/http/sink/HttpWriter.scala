@@ -82,7 +82,7 @@ class HttpWriter(
   }
 
   private def sendBatch(records: List[SinkRecord], failFast: Boolean): Boolean = {
-    MDC.put("topics", records.map(_.topic()).mkString(","))
+    MDC.put("topics", records.map(_.topic()).toSet.mkString(","))
     val body = formatter.toOutputFormat(records)
     val headers =
       authenticator.fold(config.httpHeaders)(a => config.httpHeaders + (config.authHeaderName -> a.authHeader()))
