@@ -26,7 +26,7 @@ import org.mockito.scalatest.MockitoSugar
 import org.scalatest.matchers.must.Matchers
 import org.scalatest.wordspec.AnyWordSpec
 
-import scala.concurrent.duration.{DurationInt}
+import scala.concurrent.duration.DurationInt
 
 class HttpWriterSpec extends AnyWordSpec with Matchers with MockitoSugar {
 

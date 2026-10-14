@@ -11,7 +11,7 @@ spec:
   serviceAccountName: jenkins-codeartifact
   containers:
   - name: scala-sbt
-    image: hseeberger/scala-sbt:11.0.10_1.4.7_2.13.4
+    image: sbtscala/scala-sbt:eclipse-temurin-17.0.20_8_1.13.0_3.9.0
     command:
       - cat
     tty: true

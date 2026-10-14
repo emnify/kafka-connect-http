@@ -64,7 +64,7 @@ class HttpWriter(
 
   def flush(): Unit =
     if (pausedUntil.isBefore(Instant.now())) {
-      batches.grouped(config.batchSize).foldLeft(true)((prev, b) => prev && sendBatch(b, lastOffsets.isEmpty))
+      val _ = batches.grouped(config.batchSize).foldLeft(true)((prev, b) => prev && sendBatch(b, lastOffsets.isEmpty))
       batches = List()
     } else {
       batches = List()
@@ -83,7 +83,7 @@ class HttpWriter(
 
   private def sendBatch(records: List[SinkRecord], failFast: Boolean): Boolean = {
     MDC.put("topics", records.map(_.topic()).distinct.mkString(","))
-    val body = formatter.toOutputFormat(records)
+    val body    = formatter.toOutputFormat(records)
     val headers =
       authenticator.fold(config.httpHeaders)(a => config.httpHeaders + (config.authHeaderName -> a.authHeader()))
     dispatcher.send(headers, body, failFast) match {
@@ -98,9 +98,12 @@ class HttpWriter(
   }
 
   /** Pauses consumption of topic partitions for a given duration
-    * @param e error to verify that maximum amount of retries hasn't been reached.
-    * @param tp list of partitions
-    * @param duration duration of pause
+    * @param e
+    *   error to verify that maximum amount of retries hasn't been reached.
+    * @param tp
+    *   list of partitions
+    * @param duration
+    *   duration of pause
     */
   private def pauseFor(e: SinkError, tp: List[TopicPartition], duration: Duration): Unit =
     e match {
@@ -127,7 +130,7 @@ object HttpWriter {
   def make(context: Option[SinkTaskContext])(config: HttpSinkConfig): HttpWriter = {
     val backend    = TryHttpURLConnectionBackend(options = SttpBackendOptions(connectionTimeout = config.connectTimeout.milliseconds, None))
     val dispatcher = Dispatcher.sttp(config, backend)
-    val formatter = config.formatter match {
+    val formatter  = config.formatter match {
       case "regex"  => Formatter.regexBased(config)
       case "schema" => Formatter.schemaBased(config)
     }
