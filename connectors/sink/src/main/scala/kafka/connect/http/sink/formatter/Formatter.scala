@@ -21,7 +21,7 @@ import org.apache.kafka.connect.data.{Schema, Struct}
 import org.apache.kafka.connect.sink.SinkRecord
 import java.lang.{String => JavaString}
 
-import scala.util.{Try}
+import scala.util.Try
 
 trait Formatter {
   def toOutputFormat(records: Seq[SinkRecord]): String

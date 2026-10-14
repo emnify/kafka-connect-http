@@ -9,9 +9,11 @@ jobs:
   test:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v2
-      - uses: olafurpg/setup-scala@v10
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
         with:
-          java-version: adopt@1.15
+          distribution: temurin
+          java-version: 17
+      - uses: sbt/setup-sbt@v1
       - name: Run unit tests
         run: sbt clean test

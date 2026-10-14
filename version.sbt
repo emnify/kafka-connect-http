@@ -1,1 +1,1 @@
-ThisBuild / version := "0.0.4-EMNIFY"
+ThisBuild / version := "0.0.5-EMNIFY"

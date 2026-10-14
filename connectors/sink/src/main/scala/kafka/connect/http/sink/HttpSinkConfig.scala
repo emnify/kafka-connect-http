@@ -31,8 +31,8 @@ class HttpSinkConfig(
   private val headerSep = getString(HEADERS_SEPARATOR)
   private val regexSep  = getString(REGEX_SEPARATOR)
 
-  val httpApiUrl: String        = getString(HTTP_API_URL)
-  val httpRequestMethod: String = getString(HTTP_REQUEST_METHOD)
+  val httpApiUrl: String               = getString(HTTP_API_URL)
+  val httpRequestMethod: String        = getString(HTTP_REQUEST_METHOD)
   val httpHeaders: Map[String, String] = getString(HTTP_HEADERS)
     .split(headerSep)
     .filter(_.nonEmpty)

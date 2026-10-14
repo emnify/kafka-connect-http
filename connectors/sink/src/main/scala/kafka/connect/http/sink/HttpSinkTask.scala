@@ -33,8 +33,8 @@ class HttpSinkTask extends SinkTask with Logging {
 
   override def put(records: util.Collection[SinkRecord]): Unit = {
     logger.debug(s"received ${records.size()} records with offsets = ${records.asScala
-      .map(_.kafkaOffset())
-      .mkString(",")} and partitions=${records.asScala.map(_.kafkaPartition()).mkString(",")}")
+        .map(_.kafkaOffset())
+        .mkString(",")} and partitions=${records.asScala.map(_.kafkaPartition()).mkString(",")}")
     val recs = records.asScala.filter(r => r != null && r.value() != null).toList
     if (recs.nonEmpty) {
       writer.foreach(_.put(recs))

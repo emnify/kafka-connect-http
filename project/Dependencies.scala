@@ -3,15 +3,15 @@ import sbt._
 object Dependencies {
 
   object Versions {
-    lazy val kafka     = "2.7.0"
-    lazy val confluent = "6.1.0"
-    lazy val circe     = "0.13.0"
-    lazy val sttp      = "3.2.0"
+    lazy val kafka     = "3.7.2"
+    lazy val confluent = "7.7.12"
+    lazy val circe     = "0.14.17"
+    lazy val sttp      = "3.11.0"
 
-    lazy val scalatest   = "3.2.6"
-    lazy val mockito     = "1.16.32"
-    lazy val mockserver  = "5.11.1"
-    lazy val scalaCompat = "2.2.0"
+    lazy val scalatest   = "3.2.20"
+    lazy val mockito     = "2.2.3"
+    lazy val mockserver  = "8.0.0"
+    lazy val scalaCompat = "2.14.0"
   }
 
   object Libraries {
